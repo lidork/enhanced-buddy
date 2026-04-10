@@ -8,7 +8,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { callBuddyReact } from './api.js';
 import { renderCompanionCard } from './card.js';
-import { getCompanion } from './companion.js';
+import { getCompanion, setOverride, clearOverride, hasOverride } from './companion.js';
 import { REACTION_PATH, STATE_DIR } from './paths.js';
 import { localReaction } from './reactions.js';
 import { readState, writeState, pushRecent } from './state.js';
@@ -30,7 +30,7 @@ function fallbackEvent(reason, addressed) {
 }
 
 const server = new McpServer(
-  { name: 'save-buddy', version: '1.0.0' },
+  { name: 'enhanced-buddy', version: '1.0.0' },
   {
     capabilities: { tools: {} },
     instructions: (() => {
@@ -69,7 +69,7 @@ server.registerTool(
       content: [
         {
           type: 'text',
-          text: renderCompanionCard(companion, state.lastReaction),
+          text: renderCompanionCard(companion, state.lastReaction, hasOverride()),
         },
       ],
     };
@@ -204,6 +204,122 @@ server.registerTool(
             null,
             2,
           ),
+        },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  'buddy_list',
+  {
+    title: 'List Picker Options',
+    description: 'List all available species, eyes, hats, and rarities for buddy_pick.',
+    inputSchema: z.object({}),
+  },
+  async () => {
+    const { SPECIES, EYES, HATS, RARITIES } = await import('./types.js');
+    const eyeLabels = EYES.map((e) => `${e} (U+${e.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')})`);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: [
+            `species (${SPECIES.length}): ${SPECIES.join(', ')}`,
+            `eyes (${EYES.length}): ${eyeLabels.join('  ')}`,
+            `hats (${HATS.length}): ${HATS.join(', ')}`,
+            `rarities (${RARITIES.length}): ${RARITIES.join(', ')}`,
+            '',
+            'Use buddy_pick with any combination of these values.',
+            'Stats are rerolled from the chosen rarity when rarity is overridden.',
+          ].join('\n'),
+        },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  'buddy_pick',
+  {
+    title: 'Pick Buddy Appearance',
+    description: 'Override your companion\'s species, eye, hat, and/or rarity. Omitted fields keep their current value (PRNG or previous override). Use buddy_list to see valid values.',
+    inputSchema: z.object({
+      species: z.string().optional().describe('Species name, e.g. dragon, cat, penguin'),
+      eye: z.string().optional().describe('Eye character, e.g. @ or ◉'),
+      hat: z.string().optional().describe('Hat name, e.g. wizard, crown, none'),
+      rarity: z.string().optional().describe('Rarity: common, uncommon, rare, epic, legendary'),
+    }),
+  },
+  async ({ species, eye, hat, rarity }) => {
+    const { SPECIES, EYES, HATS, RARITIES } = await import('./types.js');
+    const errors = [];
+    if (species && !SPECIES.includes(species)) errors.push(`unknown species "${species}"`);
+    if (eye && !EYES.includes(eye)) errors.push(`unknown eye "${eye}" — use buddy_list to see valid eye characters`);
+    if (hat && !HATS.includes(hat)) errors.push(`unknown hat "${hat}"`);
+    if (rarity && !RARITIES.includes(rarity)) errors.push(`unknown rarity "${rarity}"`);
+    if (errors.length) {
+      return { content: [{ type: 'text', text: `Invalid input:\n${errors.map((e) => `  • ${e}`).join('\n')}` }] };
+    }
+
+    const fields = {};
+    if (species) fields.species = species;
+    if (eye) fields.eye = eye;
+    if (hat) fields.hat = hat;
+    if (rarity) {
+      fields.rarity = rarity;
+      // Reroll stats for the new rarity so bars aren't misleading.
+      const { mulberry32, hashString, companionUserId } = await import('./companion.js');
+      const { RARITY_FLOOR, STAT_NAMES } = await import('./types.js');
+      const seed = hashString(`${companionUserId()}-pick-${rarity}-${Date.now()}`);
+      const rng = mulberry32(seed);
+      const floor = RARITY_FLOOR[rarity];
+      const statNames = [...STAT_NAMES];
+      const peak = statNames[Math.floor(rng() * statNames.length)];
+      let secondary = statNames[Math.floor(rng() * statNames.length)];
+      while (secondary === peak) secondary = statNames[Math.floor(rng() * statNames.length)];
+      const stats = {};
+      for (const name of STAT_NAMES) {
+        if (name === peak) stats[name] = Math.min(100, floor + 50 + Math.floor(rng() * 30));
+        else if (name === secondary) stats[name] = Math.max(1, floor - 10 + Math.floor(rng() * 15));
+        else stats[name] = floor + Math.floor(rng() * 40);
+      }
+      fields.stats = stats;
+    }
+
+    setOverride(fields);
+    const companion = getCompanion();
+    const state = readState();
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Override applied.\n\n${renderCompanionCard(companion, state.lastReaction, true)}`,
+        },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  'buddy_reset',
+  {
+    title: 'Reset to Deterministic Buddy',
+    description: 'Clear any buddy_pick overrides and restore the original PRNG-determined companion.',
+    inputSchema: z.object({}),
+  },
+  async () => {
+    clearOverride();
+    const companion = getCompanion();
+    const state = readState();
+    if (!companion) {
+      return { content: [{ type: 'text', text: 'Override cleared. No companion found.' }] };
+    }
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Override cleared. Restored original companion.\n\n${renderCompanionCard(companion, state.lastReaction, false)}`,
         },
       ],
     };

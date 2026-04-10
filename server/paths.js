@@ -89,5 +89,6 @@ export const STATE_DIR = join(BUDDY_DIR, 'state');
 export const STATE_PATH = join(STATE_DIR, 'state.json');
 export const REACTION_PATH = join(STATE_DIR, 'reaction.json');
 export const ADDRESSED_FLAG_PATH = join(STATE_DIR, 'addressed.flag');
+export const OVERRIDE_PATH = join(STATE_DIR, 'override.json');
 
 export const PROJECT_ROOT = join(__dirname, '..');

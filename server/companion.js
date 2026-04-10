@@ -1,8 +1,8 @@
 // 2026-04-09: Initial deterministic companion regeneration based on the reviewed preservation plan.
 // companion.js - PRNG engine plus persisted companion soul reader.
 
-import { readFileSync } from 'fs';
-import { CONFIG_PATH } from './paths.js';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { CONFIG_PATH, OVERRIDE_PATH, STATE_DIR } from './paths.js';
 import {
   EYES,
   HATS,
@@ -148,11 +148,44 @@ export function isMuted(state) {
   return !!state?.muted || isNativeMuted();
 }
 
+function readOverride() {
+  try {
+    const raw = readFileSync(OVERRIDE_PATH, 'utf-8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function setOverride(fields) {
+  try {
+    mkdirSync(STATE_DIR, { recursive: true });
+    const current = readOverride() || {};
+    const next = { ...current, ...fields };
+    writeFileSync(OVERRIDE_PATH, JSON.stringify(next, null, 2));
+  } catch {}
+}
+
+export function clearOverride() {
+  try {
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(OVERRIDE_PATH, JSON.stringify({}));
+  } catch {}
+}
+
+export function hasOverride() {
+  const o = readOverride();
+  if (!o) return false;
+  return !!(o.species || o.eye || o.hat || o.rarity);
+}
+
 export function getCompanion() {
   const stored = readCompanionConfig();
   if (!stored) {
     return null;
   }
   const { bones } = roll(companionUserId());
-  return { ...stored, ...bones };
+  // Override: stored fields win over PRNG bones, then user-set override wins over all.
+  const override = readOverride() || {};
+  return { ...bones, ...stored, ...override };
 }

@@ -5,7 +5,7 @@ import { renderSprite } from './sprites.js';
 import { STAT_NAMES, RARITY_STARS } from './types.js';
 import { wrap } from './util.js';
 
-export function renderCompanionCard(companion, lastReaction) {
+export function renderCompanionCard(companion, lastReaction, isCustom = false) {
   const width = 38;
   const lines = [];
   const stars = RARITY_STARS[companion.rarity] || '';
@@ -17,7 +17,8 @@ export function renderCompanionCard(companion, lastReaction) {
   lines.push(`\u2502${' '.repeat(width)}\u2502`);
 
   const left = `  ${stars} ${rarity}`.trimEnd();
-  const right = `${species}  `;
+  const customTag = isCustom ? 'CUSTOM' : '';
+  const right = `${customTag ? customTag + ' ' : ''}${species}  `;
   lines.push(`\u2502${left}${' '.repeat(Math.max(0, width - left.length - right.length))}${right}\u2502`);
   lines.push(`\u2502${' '.repeat(width)}\u2502`);
 
