@@ -83,6 +83,14 @@ The companion card uses ANSI rarity colors — the same palette as the status li
 | Epic | Purple |
 | Legendary | Gold |
 
+## Roadmap
+
+- [ ] **Rename / reroll** — let users set a custom name and personality, or reroll them via `/buddy rename` and `/buddy reroll`
+- [ ] **Multiple companions** — maintain a roster of companions and switch between them
+- [ ] **Re-hatching** *(optional)* — trigger a new hatching flow to regenerate name and personality from scratch
+- [ ] **More species and graphics** — expand the sprite library with additional species and alternate art styles
+- [ ] **Tamagotchi mechanics** — hunger, happiness, or energy stats that change over time and respond to how often you code
+
 ## Attribution
 
 Built on top of [save-buddy](https://github.com/jrykn/save-buddy/tree/master#) by [@jrykn](https://github.com/jrykn), which itself is based on [BonziClaude](https://github.com/zakarth/BonziClaude) by [@zakarth](https://github.com/zakarth) and [claude-buddy](https://github.com/1270011/claude-buddy) by [@1270011](https://github.com/1270011).
