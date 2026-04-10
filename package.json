@@ -1,28 +1,9 @@
 {
-  "name": "save-buddy",
-  "version": "1.0.2",
-  "description": "Preserve your Claude Code buddy companion after Anthropic removes the feature",
+  "name": "enhanced-buddy",
+  "version": "1.0.0",
+  "description": "Enhanced Claude Code buddy companion with buddy picker support",
   "type": "module",
   "license": "MIT",
-  "bin": {
-    "save-buddy": "cli.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/jrykn/save-buddy.git"
-  },
-  "keywords": [
-    "claude",
-    "claude-code",
-    "buddy",
-    "companion",
-    "mcp",
-    "statusline",
-    "ascii-art"
-  ],
-  "files": [
-    "cli.js"
-  ],
   "scripts": {
     "test": "node --test test/test-prng.js test/test-sprites.js test/test-util.js",
     "test:prng": "node --test test/test-prng.js",

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// 2026-04-09: Initial save-buddy uninstaller that removes only the settings this project adds.
-// uninstall.js - Surgically remove save-buddy integration from Claude Code settings.
+// uninstall.js - Surgically remove enhanced-buddy integration from Claude Code settings.
 
 import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -30,15 +29,13 @@ function writeSettings(settings) {
     return;
   }
 
-  const tmpPath = `${SETTINGS_PATH}.save-buddy.tmp`;
+  const tmpPath = `${SETTINGS_PATH}.enhanced-buddy.tmp`;
   writeFileSync(tmpPath, JSON.stringify(settings, null, 2));
   renameSync(tmpPath, SETTINGS_PATH);
   console.log(`\nWrote settings to ${SETTINGS_PATH}`);
 }
 
-// 2026-04-10: Remove the save-buddy MCP server entry from ~/.claude.json (the canonical
-// location where install.js writes it). Surgical: backup, parse, delete only the
-// save-buddy key, atomic write back. All other config is preserved untouched.
+// Remove the enhanced-buddy (and any legacy save-buddy) MCP server entry from ~/.claude.json.
 function removeMcpServerFromClaudeJson() {
   let raw;
   try {
@@ -54,16 +51,16 @@ function removeMcpServerFromClaudeJson() {
     claudeJson = JSON.parse(raw);
   } catch (err) {
     console.warn(`Warning: cannot parse ${CLAUDE_JSON_PATH}: ${err.message}`);
-    console.warn('Skipping MCP cleanup. Manually remove "save-buddy" from .claude.json mcpServers.');
+    console.warn('Skipping MCP cleanup. Manually remove "enhanced-buddy" from .claude.json mcpServers.');
     return;
   }
 
-  if (!claudeJson.mcpServers?.['save-buddy']) {
-    return;
-  }
+  const toRemove = ['enhanced-buddy', 'save-buddy'];
+  const present = toRemove.filter((k) => claudeJson.mcpServers?.[k]);
+  if (present.length === 0) return;
 
   if (DRY_RUN) {
-    console.log(`Would remove MCP server "save-buddy" from ${CLAUDE_JSON_PATH}`);
+    console.log(`Would remove MCP server(s) ${present.join(', ')} from ${CLAUDE_JSON_PATH}`);
     return;
   }
 
@@ -71,7 +68,9 @@ function removeMcpServerFromClaudeJson() {
   copyFileSync(CLAUDE_JSON_PATH, backupPath);
   console.log(`Backed up .claude.json to ${backupPath}`);
 
-  delete claudeJson.mcpServers['save-buddy'];
+  for (const key of present) {
+    delete claudeJson.mcpServers[key];
+  }
   if (Object.keys(claudeJson.mcpServers).length === 0) {
     delete claudeJson.mcpServers;
   }
@@ -85,16 +84,14 @@ function removeMcpServerFromClaudeJson() {
     return;
   }
 
-  const tmpPath = `${CLAUDE_JSON_PATH}.save-buddy.tmp`;
+  const tmpPath = `${CLAUDE_JSON_PATH}.enhanced-buddy.tmp`;
   writeFileSync(tmpPath, serialized);
   renameSync(tmpPath, CLAUDE_JSON_PATH);
-  console.log(`Removed MCP server "save-buddy" from ${CLAUDE_JSON_PATH}`);
+  console.log(`Removed MCP server(s) ${present.join(', ')} from ${CLAUDE_JSON_PATH}`);
 }
 
 function removeHook(settings, eventName, commandNeedle) {
-  if (!Array.isArray(settings.hooks?.[eventName])) {
-    return;
-  }
+  if (!Array.isArray(settings.hooks?.[eventName])) return;
 
   settings.hooks[eventName] = settings.hooks[eventName]
     .map((entry) => ({
@@ -118,15 +115,13 @@ function findSkillDir() {
   ];
 
   for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
+    if (existsSync(candidate)) return candidate;
   }
   return null;
 }
 
-console.log('save-buddy uninstaller');
-console.log('======================');
+console.log('enhanced-buddy uninstaller');
+console.log('==========================');
 console.log(`Config directory: ${CONFIG_DIR}`);
 if (DRY_RUN) {
   console.log('(dry-run mode - no files will be written)');
@@ -134,27 +129,23 @@ if (DRY_RUN) {
 
 const settings = readSettings();
 
-// 2026-04-10: Clean up any legacy mcpServers entries from settings.json. The
-// canonical location is .claude.json (handled separately below). Older save-buddy
-// versions wrote to settings.json which Claude Code ignores - we still clear those
-// stale entries so the file is tidy.
-if (settings.mcpServers?.['save-buddy']) {
-  delete settings.mcpServers['save-buddy'];
-  console.log('Removed legacy MCP entry from settings.json: save-buddy');
-}
-if (settings.mcpServers?.buddy) {
-  delete settings.mcpServers.buddy;
-  console.log('Removed legacy MCP entry from settings.json: buddy');
+// Clean up any legacy/stale mcpServers entries from settings.json (wrong location).
+for (const stale of ['save-buddy', 'enhanced-buddy', 'buddy']) {
+  if (settings.mcpServers?.[stale]) {
+    delete settings.mcpServers[stale];
+    console.log(`Removed legacy MCP entry from settings.json: ${stale}`);
+  }
 }
 if (settings.mcpServers && Object.keys(settings.mcpServers).length === 0) {
   delete settings.mcpServers;
 }
 
+// Remove hooks by path needle so we catch both save-buddy and enhanced-buddy installs.
 removeHook(settings, 'Stop', 'buddy-stop');
 removeHook(settings, 'UserPromptSubmit', 'buddy-prompt');
 removeHook(settings, 'PreToolUse', 'buddy-prompt');
 removeHook(settings, 'SessionStart', 'buddy-session');
-console.log('Removed save-buddy hooks');
+console.log('Removed buddy hooks');
 
 if (settings.statusLine?.command?.includes('buddy-hud-wrapper')) {
   try {
@@ -177,6 +168,16 @@ if (settings.statusLine?.command?.includes('buddy-hud-wrapper')) {
 
 if (Array.isArray(settings.permissions?.allow)) {
   const remove = new Set([
+    // enhanced-buddy permissions (all tools including new ones)
+    'mcp__enhanced-buddy__buddy_show',
+    'mcp__enhanced-buddy__buddy_pet',
+    'mcp__enhanced-buddy__buddy_react',
+    'mcp__enhanced-buddy__buddy_mute',
+    'mcp__enhanced-buddy__buddy_stats',
+    'mcp__enhanced-buddy__buddy_list',
+    'mcp__enhanced-buddy__buddy_pick',
+    'mcp__enhanced-buddy__buddy_reset',
+    // legacy save-buddy permissions
     'mcp__save-buddy__buddy_show',
     'mcp__save-buddy__buddy_pet',
     'mcp__save-buddy__buddy_react',

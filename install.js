@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// 2026-04-09: Initial save-buddy installer that wires MCP, hooks, statusline, permissions, and skill.
-// install.js - Idempotently register save-buddy with Claude Code settings.
+// install.js - Idempotently register enhanced-buddy with Claude Code settings.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
@@ -8,10 +7,10 @@ import { fileURLToPath } from 'url';
 import JSON5 from 'json5';
 import { BUDDY_DIR, CONFIG_DIR as DETECTED_CONFIG_DIR, CONFIG_PATH } from './server/paths.js';
 
-// 2026-04-09: Guard against running on Node < 20 (top-level await, ESM features).
+// Guard against running on Node < 20 (top-level await, ESM features).
 const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
 if (nodeMajor < 20) {
-  console.error(`ERROR: save-buddy requires Node.js >= 20. You are running ${process.versions.node}.`);
+  console.error(`ERROR: enhanced-buddy requires Node.js >= 20. You are running ${process.versions.node}.`);
   process.exit(1);
 }
 
@@ -22,10 +21,7 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const HOME = process.env.HOME || process.env.USERPROFILE || '';
 const CONFIG_DIR = DETECTED_CONFIG_DIR;
 const SETTINGS_PATH = join(CONFIG_DIR, 'settings.json');
-// 2026-04-10: MCP servers must live in .claude.json (user scope) per the official
-// Claude Code docs: https://code.claude.com/docs/en/settings.md (line 80).
-// settings.json does NOT support the mcpServers field and silently ignores it on
-// current versions (prior installer wrote there and broke MCP registration).
+// MCP servers must live in .claude.json (user scope) — settings.json silently ignores mcpServers.
 const CLAUDE_JSON_PATH = CONFIG_PATH;
 const STATE_DIR = join(BUDDY_DIR, 'state');
 const PREVIOUS_STATUSLINE_PATH = join(BUDDY_DIR, 'previous-statusline.json');
@@ -54,20 +50,20 @@ function writeSettings(settings) {
     return;
   }
 
-  const tmpPath = `${SETTINGS_PATH}.save-buddy.tmp`;
+  const tmpPath = `${SETTINGS_PATH}.enhanced-buddy.tmp`;
   writeFileSync(tmpPath, JSON.stringify(settings, null, 2));
   renameSync(tmpPath, SETTINGS_PATH);
   console.log(`\nWrote settings to ${SETTINGS_PATH}`);
 }
 
-// 2026-04-09: Use save-buddy path prefix for hook matching (capstone P1 #3).
-// Previously used substring match ('buddy-stop') which could false-positive on other extensions.
+// Match hooks by project path so re-running is idempotent and doesn't
+// collide with a separately-installed save-buddy instance.
 function ensureHook(settings, eventName, commandNeedle, command) {
   if (!settings.hooks) settings.hooks = {};
   if (!Array.isArray(settings.hooks[eventName])) settings.hooks[eventName] = [];
 
   const exists = settings.hooks[eventName].some((entry) =>
-    entry?.hooks?.some((hook) => hook.command?.includes('save-buddy') && hook.command?.includes(commandNeedle)));
+    entry?.hooks?.some((hook) => hook.command?.includes('enhanced-buddy') && hook.command?.includes(commandNeedle)));
 
   if (!exists) {
     settings.hooks[eventName].push({ hooks: [{ type: 'command', command }] });
@@ -75,18 +71,11 @@ function ensureHook(settings, eventName, commandNeedle, command) {
   }
 }
 
-// 2026-04-10: Register the save-buddy MCP server in ~/.claude.json (user scope).
-// This file is Claude Code's main config. It contains OAuth tokens, project state,
-// and the companion field, so we read-modify-write very carefully:
-//   1. Backup with timestamped name before any write
-//   2. Parse fully to validate JSON, fail loudly if corrupted
-//   3. Modify ONLY the mcpServers.save-buddy field, preserve everything else
-//   4. Atomic write via tmp + rename
-//   5. Re-parse the written file to verify the round-trip
-// If any step fails, the original file is untouched and the user is told.
+// Register the enhanced-buddy MCP server in ~/.claude.json (user scope).
+// Read-modify-write with backup + atomic write + round-trip verification.
 function ensureMcpServerInClaudeJson(serverPath) {
   if (DRY_RUN) {
-    console.log(`Would register MCP server "save-buddy" in ${CLAUDE_JSON_PATH}`);
+    console.log(`Would register MCP server "enhanced-buddy" in ${CLAUDE_JSON_PATH}`);
     return true;
   }
 
@@ -126,7 +115,7 @@ function ensureMcpServerInClaudeJson(serverPath) {
     claudeJson.mcpServers = {};
   }
 
-  claudeJson.mcpServers['save-buddy'] = {
+  claudeJson.mcpServers['enhanced-buddy'] = {
     command: 'node',
     args: [serverPath],
     ...(process.env.CLAUDE_CONFIG_DIR ? { env: { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR } } : {}),
@@ -143,10 +132,10 @@ function ensureMcpServerInClaudeJson(serverPath) {
     return false;
   }
 
-  const tmpPath = `${CLAUDE_JSON_PATH}.save-buddy.tmp`;
+  const tmpPath = `${CLAUDE_JSON_PATH}.enhanced-buddy.tmp`;
   writeFileSync(tmpPath, serialized);
   renameSync(tmpPath, CLAUDE_JSON_PATH);
-  console.log(`Registered MCP server "save-buddy" in ${CLAUDE_JSON_PATH}`);
+  console.log(`Registered MCP server "enhanced-buddy" in ${CLAUDE_JSON_PATH}`);
   return true;
 }
 
@@ -167,8 +156,8 @@ function installSkill() {
   console.log(`Installed /buddy skill to ${targetDir}`);
 }
 
-console.log('save-buddy installer');
-console.log('====================');
+console.log('enhanced-buddy installer');
+console.log('========================');
 console.log(`Config directory:  ${CONFIG_DIR}`);
 console.log(`Settings file:     ${SETTINGS_PATH}`);
 console.log(`Claude JSON file:  ${CLAUDE_JSON_PATH}`);
@@ -184,17 +173,18 @@ if (!DRY_RUN) {
   mkdirSync(STATE_DIR, { recursive: true });
 }
 
-// 2026-04-10: MCP server registration moved to .claude.json (see ensureMcpServerInClaudeJson).
-// settings.json silently ignores the mcpServers field on Claude Code v2.1.89+ per the docs:
-// https://code.claude.com/docs/en/settings.md (Feature location table). Writing there
-// previously caused MCP loading failures - the prior installer thought registration succeeded
-// but Claude Code never picked up the server.
 const serverPath = join(PROJECT_ROOT, 'server', 'index.js').replace(/\\/g, '/');
-// Clean up any stale mcpServers entry in settings.json from prior buggy installs.
-if (settings.mcpServers?.['save-buddy']) {
-  delete settings.mcpServers['save-buddy'];
-  if (Object.keys(settings.mcpServers).length === 0) delete settings.mcpServers;
-  console.log('Removed stale save-buddy entry from settings.json (wrong location)');
+
+// Clean up any stale mcpServers entries in settings.json from prior buggy installs
+// (both save-buddy and enhanced-buddy names).
+for (const stale of ['save-buddy', 'enhanced-buddy']) {
+  if (settings.mcpServers?.[stale]) {
+    delete settings.mcpServers[stale];
+    console.log(`Removed stale ${stale} entry from settings.json (wrong location)`);
+  }
+}
+if (settings.mcpServers && Object.keys(settings.mcpServers).length === 0) {
+  delete settings.mcpServers;
 }
 
 // Register MCP server in the canonical location: ~/.claude.json (user scope).
@@ -202,7 +192,7 @@ const mcpRegistered = ensureMcpServerInClaudeJson(serverPath);
 if (!mcpRegistered) {
   console.error('\nERROR: MCP registration failed. /buddy commands will not work.');
   console.error('Fix the issue above and re-run install.js, or manually add to ~/.claude.json:');
-  console.error(`  "mcpServers": { "save-buddy": { "command": "node", "args": ["${serverPath}"] } }`);
+  console.error(`  "mcpServers": { "enhanced-buddy": { "command": "node", "args": ["${serverPath}"] } }`);
   process.exit(1);
 }
 
@@ -240,25 +230,22 @@ settings.statusLine = {
   ...(settings.statusLine || {}),
   type: 'command',
   command: wrapperCommand,
-  // 2026-04-10: refreshInterval (seconds) is required for buddy animation (idle
-  // sequence, blink, pet hearts). Without it, the statusline only updates on
-  // events. Minimum value Claude Code accepts is 1. Native buddy used Ink's own
-  // render loop (~500ms), so refreshInterval:1 is the closest we can match.
-  // Field name confirmed from Claude Code source: $?.statusLine?.refreshInterval
   refreshInterval: 1,
 };
-console.log('Set statusLine command to save-buddy wrapper');
+console.log('Set statusLine command to enhanced-buddy wrapper');
 
 if (!settings.permissions) settings.permissions = {};
 if (!Array.isArray(settings.permissions.allow)) settings.permissions.allow = [];
 
-// 2026-04-09: Log each permission for transparency (commit safety SEC-002).
 const buddyPermissions = [
-  'mcp__save-buddy__buddy_show',
-  'mcp__save-buddy__buddy_pet',
-  'mcp__save-buddy__buddy_react',
-  'mcp__save-buddy__buddy_mute',
-  'mcp__save-buddy__buddy_stats',
+  'mcp__enhanced-buddy__buddy_show',
+  'mcp__enhanced-buddy__buddy_pet',
+  'mcp__enhanced-buddy__buddy_react',
+  'mcp__enhanced-buddy__buddy_mute',
+  'mcp__enhanced-buddy__buddy_stats',
+  'mcp__enhanced-buddy__buddy_list',
+  'mcp__enhanced-buddy__buddy_pick',
+  'mcp__enhanced-buddy__buddy_reset',
 ];
 console.log('Auto-approving MCP permissions:');
 for (const permission of buddyPermissions) {
@@ -268,10 +255,7 @@ for (const permission of buddyPermissions) {
   console.log(`  ${permission}`);
 }
 
-// 2026-04-10: Back up companion data from CLAUDE_JSON_PATH (the actual .claude.json
-// location, which is at home root on standard installs - not inside CONFIG_DIR).
-// Prior version read join(CONFIG_DIR, '.claude.json') which missed the file on
-// every standard Claude Code install and silently skipped the backup. (#1)
+// Back up companion data before any writes.
 try {
   const config = JSON.parse(readFileSync(CLAUDE_JSON_PATH, 'utf-8'));
   if (config.companion && !DRY_RUN) {
