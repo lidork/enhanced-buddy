@@ -271,7 +271,7 @@ server.registerTool(
       // Reroll stats for the new rarity so bars aren't misleading.
       const { mulberry32, hashString, companionUserId } = await import('./companion.js');
       const { RARITY_FLOOR, STAT_NAMES } = await import('./types.js');
-      const seed = hashString(`${companionUserId()}-pick-${rarity}-${Date.now()}`);
+      const seed = hashString(`${companionUserId()}-pick-${rarity}`);
       const rng = mulberry32(seed);
       const floor = RARITY_FLOOR[rarity];
       const statNames = [...STAT_NAMES];
@@ -320,6 +320,50 @@ server.registerTool(
         {
           type: 'text',
           text: `Override cleared. Restored original companion.\n\n${renderCompanionCard(companion, state.lastReaction, false)}`,
+        },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  'buddy_statroll',
+  {
+    title: 'Reroll Companion Stats',
+    description: 'Randomly reroll your companion\'s stats based on their current rarity and save the result.',
+    inputSchema: z.object({}),
+  },
+  async () => {
+    const companion = getCompanion();
+    if (!companion) {
+      return { content: [{ type: 'text', text: 'No companion found.' }] };
+    }
+
+    const { mulberry32, hashString, companionUserId } = await import('./companion.js');
+    const { RARITY_FLOOR, STAT_NAMES } = await import('./types.js');
+    const seed = hashString(`${companionUserId()}-statroll-${Date.now()}`);
+    const rng = mulberry32(seed);
+    const rarity = companion.rarity;
+    const floor = RARITY_FLOOR[rarity];
+    const statNames = [...STAT_NAMES];
+    const peak = statNames[Math.floor(rng() * statNames.length)];
+    let secondary = statNames[Math.floor(rng() * statNames.length)];
+    while (secondary === peak) secondary = statNames[Math.floor(rng() * statNames.length)];
+    const stats = {};
+    for (const name of STAT_NAMES) {
+      if (name === peak) stats[name] = Math.min(100, floor + 50 + Math.floor(rng() * 30));
+      else if (name === secondary) stats[name] = Math.max(1, floor - 10 + Math.floor(rng() * 15));
+      else stats[name] = floor + Math.floor(rng() * 40);
+    }
+
+    setOverride({ stats });
+    const updated = getCompanion();
+    const state = readState();
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Stats rerolled (${rarity}).\n\n${renderCompanionCard(updated, state.lastReaction, hasOverride())}`,
         },
       ],
     };

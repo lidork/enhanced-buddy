@@ -14,6 +14,9 @@ export const EYES = [
   '\u25c9',
   '@',
   '\u00b0',
+  '\u2299', // ⊙ sun/bullseye
+  '\u03c8', // ψ psi / mystical
+  '\u2665', // ♥ heart
 ];
 
 export const HATS = [
@@ -25,6 +28,8 @@ export const HATS = [
   'wizard',
   'beanie',
   'tinyduck',
+  'party',
+  'antlers',
 ];
 
 export const STAT_NAMES = ['DEBUGGING', 'PATIENCE', 'CHAOS', 'WISDOM', 'SNARK'];

@@ -105,6 +105,8 @@ const HAT_LINES = {
   wizard: '    /^\\     ',
   beanie: '   (___)    ',
   tinyduck: '    ,>      ',
+  party:    '    /|\\     ',
+  antlers:  ' Y       Y  ',
 };
 
 const FACE_TEMPLATES = {
