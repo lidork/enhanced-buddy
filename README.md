@@ -1,6 +1,6 @@
 # enhanced-buddy
 
-A fork of [save-buddy](https://github.com/jrykn/save-buddy/tree/master#) by [@jrykn](https://github.com/jrykn) — adds a companion picker so you can override your species, eyes, hat, and rarity via `/buddy pick`.
+A fork of [save-buddy](https://github.com/jrykn/save-buddy/tree/master#) by [@jrykn](https://github.com/jrykn) — adds a companion picker, rarity card colors, and a multi-buddy roster (up to 10 companions).
 
 For how the underlying system works (PRNG, reactions, status line, hooks, FAQ), see the [original save-buddy README](https://github.com/jrykn/save-buddy/tree/master#).
 
@@ -50,8 +50,27 @@ cd ~/.enhanced-buddy && node uninstall.js
 | `/buddy mute` / `/buddy unmute` | Toggle reactions and status line |
 | `/buddy react` | Manually trigger a reaction |
 | `/buddy list` | List all available species, eyes, hats, rarities |
-| `/buddy pick [...]` | Override appearance (see below) |
+| `/buddy pick [...]` | Override active buddy's appearance |
 | `/buddy reset` | Restore original deterministic companion |
+| `/buddy roster` | List all companions in your roster |
+| `/buddy new [...]` | Create a new companion (wizard if no args) |
+| `/buddy switch <name>` | Switch active companion |
+| `/buddy free <name>` | Permanently release a companion |
+
+## Buddy roster
+
+You can have up to 10 companions at once (including your original). The original PRNG companion is always preserved and can never be released.
+
+```
+/buddy new                    # wizard — prompts for name, traits, generates personality
+/buddy new Cinder dragon      # named dragon with randomized other traits
+/buddy roster                 # see all companions
+/buddy switch Cinder          # switch active companion
+/buddy switch original        # return to your original
+/buddy free Cinder            # release a companion permanently
+```
+
+Roster data is stored in `~/.config/save-buddy/state/roster.json`. The original companion's bones always come from the PRNG — only custom buddies store their full appearance.
 
 ## Buddy picker
 
@@ -86,7 +105,7 @@ The companion card uses ANSI rarity colors — the same palette as the status li
 ## Roadmap
 
 - [ ] **Rename / reroll** — let users set a custom name and personality, or reroll them via `/buddy rename` and `/buddy reroll`
-- [ ] **Multiple companions** — maintain a roster of companions and switch between them
+- [x] **Multiple companions** — roster of up to 10 companions with `/buddy new`, `/buddy switch`, `/buddy free`
 - [ ] **Re-hatching** *(optional)* — trigger a new hatching flow to regenerate name and personality from scratch
 - [ ] **More species and graphics** — expand the sprite library with additional species and alternate art styles
 - [ ] **Tamagotchi mechanics** — hunger, happiness, or energy stats that change over time and respond to how often you code

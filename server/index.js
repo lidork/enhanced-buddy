@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { callBuddyReact } from './api.js';
 import { renderCompanionCard } from './card.js';
 import { getCompanion, setOverride, clearOverride, hasOverride } from './companion.js';
+import { listBuddies, addBuddy, freeBuddy, switchBuddy } from './roster.js';
 import { REACTION_PATH, STATE_DIR } from './paths.js';
 import { localReaction } from './reactions.js';
 import { readState, writeState, pushRecent } from './state.js';
@@ -366,6 +367,167 @@ server.registerTool(
           text: `Stats rerolled (${rarity}).\n\n${renderCompanionCard(updated, state.lastReaction, hasOverride())}`,
         },
       ],
+    };
+  },
+);
+
+server.registerTool(
+  'buddy_roster',
+  {
+    title: 'List Buddy Roster',
+    description: 'List all companions in the roster (up to 10, including the original). Shows id, name, species, rarity, and which is active.',
+    inputSchema: z.object({}),
+  },
+  async () => {
+    const { active, buddies } = listBuddies();
+    const lines = [];
+
+    const activeLabel = active === 'original' ? ' ← active' : '';
+    lines.push(`original: ${getCompanion()?.name || 'unknown'} (your PRNG companion)${activeLabel}`);
+
+    for (const b of buddies) {
+      const isActive = b.id === active ? ' ← active' : '';
+      lines.push(`${b.id}: ${b.name || 'Unnamed'} (${b.species || '?'}, ${b.rarity || '?'})${isActive}`);
+    }
+
+    const slots = buddies.length + 1; // +1 for original
+    lines.push('');
+    lines.push(`${slots}/${10} slots used`);
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  },
+);
+
+server.registerTool(
+  'buddy_switch',
+  {
+    title: 'Switch Active Buddy',
+    description: 'Switch to a different companion by name or id. Use "original" to switch back to your PRNG companion.',
+    inputSchema: z.object({
+      id_or_name: z.string().describe('The buddy\'s name or id, or "original" to restore the PRNG companion'),
+    }),
+  },
+  async ({ id_or_name }) => {
+    const result = switchBuddy(id_or_name);
+    if (!result.ok) {
+      return { content: [{ type: 'text', text: result.error }] };
+    }
+    const companion = getCompanion();
+    const state = readState();
+    const card = companion
+      ? renderCompanionCard(companion, state.lastReaction, result.id !== 'original')
+      : '';
+    return {
+      content: [{
+        type: 'text',
+        text: `Switched to ${companion?.name || id_or_name}.\n\n${card}`,
+      }],
+    };
+  },
+);
+
+server.registerTool(
+  'buddy_new',
+  {
+    title: 'Create New Buddy',
+    description: 'Create a new companion and add them to your roster (max 10 including original). Provide appearance and identity — all fields optional except name.',
+    inputSchema: z.object({
+      name: z.string().describe('Your new companion\'s name'),
+      personality: z.string().optional().describe('A one-sentence personality description'),
+      species: z.string().optional().describe('Species, e.g. dragon, cat. Defaults to random.'),
+      eye: z.string().optional().describe('Eye character, e.g. @ or ◉. Defaults to random.'),
+      hat: z.string().optional().describe('Hat name, e.g. wizard, crown, none. Defaults to random.'),
+      rarity: z.string().optional().describe('Rarity: common, uncommon, rare, epic, legendary. Defaults to random.'),
+    }),
+  },
+  async ({ name, personality, species, eye, hat, rarity }) => {
+    const { SPECIES, EYES, HATS, RARITIES, RARITY_FLOOR, STAT_NAMES } = await import('./types.js');
+    const { mulberry32, hashString, companionUserId } = await import('./companion.js');
+
+    const errors = [];
+    if (species && !SPECIES.includes(species)) errors.push(`unknown species "${species}"`);
+    if (eye && !EYES.includes(eye)) errors.push(`unknown eye "${eye}" — use buddy_list to see valid values`);
+    if (hat && !HATS.includes(hat)) errors.push(`unknown hat "${hat}"`);
+    if (rarity && !RARITIES.includes(rarity)) errors.push(`unknown rarity "${rarity}"`);
+    if (errors.length) {
+      return { content: [{ type: 'text', text: `Invalid input:\n${errors.map((e) => `  • ${e}`).join('\n')}` }] };
+    }
+
+    // Fill any omitted appearance fields with a random pick.
+    const rng = mulberry32(hashString(`${companionUserId()}-new-${name}-${Date.now()}`));
+    const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+
+    const resolvedRarity = rarity || pick(RARITIES);
+    const resolvedSpecies = species || pick(SPECIES);
+    const resolvedEye = eye || pick(EYES);
+    const resolvedHat = hat || (resolvedRarity === 'common' ? 'none' : pick(HATS));
+
+    // Roll stats for the resolved rarity.
+    const floor = RARITY_FLOOR[resolvedRarity];
+    const peak = pick(STAT_NAMES);
+    let secondary = pick(STAT_NAMES);
+    while (secondary === peak) secondary = pick(STAT_NAMES);
+    const stats = {};
+    for (const statName of STAT_NAMES) {
+      if (statName === peak) stats[statName] = Math.min(100, floor + 50 + Math.floor(rng() * 30));
+      else if (statName === secondary) stats[statName] = Math.max(1, floor - 10 + Math.floor(rng() * 15));
+      else stats[statName] = floor + Math.floor(rng() * 40);
+    }
+
+    const entry = {
+      name,
+      personality: personality || '',
+      species: resolvedSpecies,
+      eye: resolvedEye,
+      hat: resolvedHat,
+      rarity: resolvedRarity,
+      stats,
+      hatchedAt: Date.now(),
+    };
+
+    const result = addBuddy(entry);
+    if (!result.ok) {
+      return { content: [{ type: 'text', text: result.error }] };
+    }
+
+    // Switch to the new buddy immediately.
+    switchBuddy(result.id);
+    const companion = getCompanion();
+    const state = readState();
+    return {
+      content: [{
+        type: 'text',
+        text: `${name} added to your roster!\n\n${renderCompanionCard(companion, state.lastReaction, true)}`,
+      }],
+    };
+  },
+);
+
+server.registerTool(
+  'buddy_free',
+  {
+    title: 'Release a Buddy',
+    description: 'Permanently remove a custom companion from your roster by name or id. Your original PRNG companion can never be released.',
+    inputSchema: z.object({
+      id_or_name: z.string().describe('The buddy\'s name or id to release'),
+    }),
+  },
+  async ({ id_or_name }) => {
+    const result = freeBuddy(id_or_name);
+    if (!result.ok) {
+      return { content: [{ type: 'text', text: result.error }] };
+    }
+    const freed = result.freed;
+    const companion = getCompanion();
+    const state = readState();
+    const card = companion
+      ? `\n\nNow showing: ${companion.name}\n\n${renderCompanionCard(companion, state.lastReaction, freed.id !== 'original')}`
+      : '';
+    return {
+      content: [{
+        type: 'text',
+        text: `${freed.name || freed.id} has been released. Goodbye!${card}`,
+      }],
     };
   },
 );

@@ -3,6 +3,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { CONFIG_PATH, OVERRIDE_PATH, STATE_DIR } from './paths.js';
+import { getActiveBuddy } from './roster.js';
 import {
   EYES,
   HATS,
@@ -180,12 +181,18 @@ export function hasOverride() {
 }
 
 export function getCompanion() {
+  // If a custom roster buddy is active, return it directly — no PRNG needed.
+  const activeBuddy = getActiveBuddy();
+  if (activeBuddy) {
+    return activeBuddy;
+  }
+
+  // Original buddy: derive bones from PRNG, merge stored name/personality, apply override.
   const stored = readCompanionConfig();
   if (!stored) {
     return null;
   }
   const { bones } = roll(companionUserId());
-  // Override: stored fields win over PRNG bones, then user-set override wins over all.
   const override = readOverride() || {};
   return { ...bones, ...stored, ...override };
 }
