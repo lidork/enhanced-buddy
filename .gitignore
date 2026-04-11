@@ -17,3 +17,4 @@ companion-backup.json
 *.buddy-backup-*
 *.save-buddy.tmp
 .npmrc
+.worktrees/
