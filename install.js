@@ -246,6 +246,11 @@ const buddyPermissions = [
   'mcp__enhanced-buddy__buddy_list',
   'mcp__enhanced-buddy__buddy_pick',
   'mcp__enhanced-buddy__buddy_reset',
+  'mcp__enhanced-buddy__buddy_statroll',
+  'mcp__enhanced-buddy__buddy_roster',
+  'mcp__enhanced-buddy__buddy_switch',
+  'mcp__enhanced-buddy__buddy_new',
+  'mcp__enhanced-buddy__buddy_free',
 ];
 console.log('Auto-approving MCP permissions:');
 for (const permission of buddyPermissions) {
